@@ -24,9 +24,9 @@ module.exports = {
             type = M.quoted.mtype.replace('Message', '')
             buffer = await M.quoted.download()
         }
-        const text = `*「 ${client.name.toUpperCase()} BROADCAST 」*\n\n${arg}\n\n*Regards: TEKCIFY TECH* 💜`
+        const text = `*「 BINX BROADCAST 」*\n\n${arg}\n\n*Regards: TEKCIFY TECH* 💜`
         for (const result of results) {
-            await delay(5000)
+            await delay(10000)
             await client.sendMessage(result, {
                 [type]: type === 'text' ? text : buffer,
                 caption: type === 'text' ? undefined : text,

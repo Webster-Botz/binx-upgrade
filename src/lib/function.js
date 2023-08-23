@@ -4,16 +4,34 @@ const { promisify } = require('util')
 const linkify = require('linkifyjs')
 const FormData = require('form-data')
 const { load } = require('cheerio')
-const { exec } = require('child_process')
+const exec = promisify(require('child_process').exec)
 const { createCanvas } = require('canvas')
 const { sizeFormatter } = require('human-readable')
-const { readFile, unlink, writeFile } = require('fs-extra')
+const { readFile, unlink, writeFile, fs } = require('fs-extra')
 const { removeBackgroundFromImageBase64 } = require('remove.bg')
+const path = require('path')
 
 /**
  * @param {string} url
  * @returns {Promise<Buffer>}
  */
+
+const audioToSplit = async (buffer) => {
+  const filename = path.join(tmpdir(), `${Math.random().toString(36)}.mp3`)
+  await fs.writeFile(filename, buffer)
+  try {
+    const directory = 'temporary'
+    await fs.ensureDir(directory)
+    await exec(`ffmpeg -i ${filename} -f segment -segment_time 75 -c:a libmp3lame ${directory}/audio_%03d.mp3`)
+    const files = await fs.readdir(directory)
+    const buffers = await Promise.all(files.map(x => fs.readFile(path.join(directory, x))))
+    await Promise.all([fs.unlink(filename), fs.remove(directory)])
+    return buffers
+  } catch (error) {
+    console.error(error.message)
+    return []
+  }
+}
 
 const getBuffer = async (url) =>
     (
@@ -21,6 +39,9 @@ const getBuffer = async (url) =>
             responseType: 'arraybuffer'
         })
     ).data
+
+const formatSeconds = (seconds) => new Date(seconds * 1000).toISOString().substr(11, 8)
+
 
 /**
  * @param {string} content
@@ -199,7 +220,7 @@ const term = (param) =>
     })
 
 const restart = () => {
-    exec('pm2 start src/krypton.js', (err, stdout, stderr) => {
+    exec('pm2 start src/binx.js', (err, stdout, stderr) => {
         if (err) {
             console.log(err)
             return
@@ -210,7 +231,9 @@ const restart = () => {
 }
 
 module.exports = {
+    audioToSplit,
     calculatePing,
+    formatSeconds,
     capitalize,
     execute,
     extractNumbers,

@@ -1,12 +1,12 @@
 const { serialize } = require('../lib/WAclient')
-const { fetch } = require('../lib/function')
+const { audioToSplit, fetch, formatSeconds } = require('../lib/function')
 const { Configuration, OpenAIApi } = require('openai')
 const { search, summary } = require('wikipedia')
 const FormData = require('form-data')
 const googleit = require('google-it')
 const axios = require('axios')
 const chalk = require('chalk')
-
+const currentUTCTime = new Date().toUTCString()
 let helper, name
 
 module.exports = async ({ messages }, client) => {
@@ -26,58 +26,96 @@ module.exports = async ({ messages }, client) => {
         const flag = args.filter((arg) => arg.startsWith('--'))
         const groupMembers = gcMeta?.participants || []
         const groupAdmins = groupMembers.filter((v) => v.admin).map((v) => v.id)
-
-        const banned = (await client.DB.get('banned')) || []
         const subject = isGroup ? (await client.groupMetadata(from)).subject : ''
         await client.readMessages([M.key])
-   
-       
-        if (!isCmd && !M.key.fromMe) {
-        if (!isGroup && !M.key.fromMe) {
-            if (M.type === 'audioMessage') {
-                M.reply('👩🏻🎧✍️')
-                let result = await transcribe(await M.download(), client)
-                body = result
-                await M.reply(`🎙️ ▶️ _"${result}"_`)
-            }
-            let data = await analysisMessage(M, client, body)
-            if (!/^{\s*".*"\s*}$/.test(data)) data = '{ "normal": null }'
-            let type = JSON.parse(data)
-            if (type.google) {
-                helper = await google(type.google)
-                await M.reply('👩🏻🔎🌐')
-            } else if (type.weather) {
-                helper = await weather(type.weather)
-                await M.reply('👩🏻🔍☀️🌡')
-            } else if (type.wikipedia) {
-                helper = await wikipedia(type.wikipedia)
-                await M.reply('👩🏻🔍📚')
-            }
-            await chatGPT(M, client, body)
-        }
-    }
-        client.log(`~Message from ${name} in ${isGroup ? subject : 'DM'}`, 'yellow')
 
-        if (!isCmd) return
+        if (!isCmd && !M.key.fromMe) {
+            if (!isGroup && !M.key.fromMe) {
+                try {
+                    if (M.type === 'audioMessage') {
+                        const voice = M.message?.audioMessage?.ptt
+                        await M.reply(voice ? '👩🏻👂🎧' : '👩🏻🎧✍️')
+                        if (!voice) {
+                            let text = 'Write a Quick and Short Summary of text below:\n\n'
+                            const duration = M.message?.audioMessage?.seconds
+                            if (duration > 600) return void M.reply('You are only allowed to use audio less than 10 minutes')
+                            if (duration > 75) {
+                                const audios = await audioToSplit(await M.download())
+                                if (!audios || !audios.length) return void M.reply('An error occurred')
+                                if (audios.length) {
+                                    const total = audios.length
+                                    for (let i = 0; i < total; i++) {
+                                        const result = await transcribe(audios[i], client)
+                                        text += result + '\n'
+                                        await M.reply(`🎙️ *${1 + i}/${total}* ▶️ _"${result}"_`)
+                                    }
+                                }
+                                return void await chatGPT(M, client, text)
+                            }
+                            const result = await transcribe(await M.download(), client)
+                            await M.reply(`🎙️ *1/1* ▶️ _"${result}"_`)
+                            text += result
+                            return void await chatGPT(M, client, text)
+                        }
+                        const result = await transcribe(await M.download(), client)
+                        return void await chatGPT(M, client, result)
+                    }
+                   // if (!body || !body.startsWith(cmdName)) return void null 
+                    let data = await analysisMessage(M, client, body)
+                    if (!/^{\s*".*"\s*}$/.test(data)) data = '{ "normal": null }'
+                    let type = JSON.parse(data)
+                    if (type.google) {
+                        helper = await google(type.google)
+                       
+                    } else if (type.time) {
+                        helper = await getCountryTime(type?.time)
+                       
+                    } else if (type.weather) {
+                        helper = await weather(type?.weather)
+                        
+                    } else if (type.wikipedia) {
+                        helper = await wikipedia(type.wikipedia)
+                     
+                    }
+                    return void await chatGPT(M, client, body)
+                  if (!isCmd) return
+
         const command =
+
             client.cmd.get(cmdName) || client.cmd.find((cmd) => cmd.aliases && cmd.aliases.includes(cmdName))
 
+
+
         if (!command) return M.reply('No such command found!')
+
         if (!groupAdmins.includes(sender) && command.category == 'moderation')
+
             return M.reply('This command can only be used by group or community admins')
+
         if (!groupAdmins.includes(client.user.id.split(':')[0] + '@s.whatsapp.net') && command.category == 'moderation')
+
             return M.reply('This command can only be used when bot is admin')
+
         if (!isGroup && command.category == 'moderation') return M.reply('This command is ment to use in groups')
+
         if (!client.mods.includes(sender.split('@')[0]) && command.category == 'dev')
+
             return M.reply('This command only can be accessed by the mods')
+
         command.execute(client, flag, arg, M)
-       
-            
-    } catch (err) {
-        client.log(err, 'red')
+                } catch (err) {
+                    client.log(err, 'red')
+                }
+            }
+        }
+await experience(client, sender, M, from, command)
+
+        client.log(`~Message from ${M.pushName || 'Binx-user💜'} in ${isGroup ? subject : 'DM'}`, 'yellow')
+    } catch (error) {
+        console.log(error.message)
+        return '{ "normal": null }'
     }
 }
-
 
 const analysisMessage = async (M, client, context) => {
     const { apiKey, messagesMap } = client
@@ -89,19 +127,28 @@ const analysisMessage = async (M, client, context) => {
             messages: [
                 {
                     role: 'system',
-                    content: `analysis up coming messages, remember I have 3 features (google search, weather, wikipedia details), so when a message is about that you need to extract it
-e.g: 
-Can you tell me weather info of today weather of in Lahore?
-note: weather can only take city name
+                    content: `analysis up coming messages, remember You have 4 features (current time, google search, weather, wikipedia details), so when a message is about that you need to extract it
+e.g:
+To Get current time & date info of (Country/City)
+Q: Can you tell current time of Pakistan?
+Note: it'll take country/city
+return { "time": "Pakistan" }
+
+To Get information related to weather, 
+Q: Can you tell info about today weather in Lahore?
+Note: it'll take country/city
 return { "weather": "Lahore" }
 
-Can you search on Google about  current exchange rate between Pakistan and USA?
+To Get information which you don't know,
+Q: Can you tell about current exchange rate between Pakistan and USA?
 return { "google": "current exchange rate between Pakistan and USA" }
 
-Can you give me details of Rent-A-Girlfriend from wikipedia?
-return { "wikipedia": "Rent-A-Girlfriend" }
+To get deep details of a word, character, specific personality,
+Q: Can you give me details of Langchain?
+return { "wikipedia": "Langchain" }
 
-Incase, it's a simple message like: "hi", "dm", "well", "weeb", or anything else you must
+For normal discussion topics related to chatting,
+Incase, it's a simple message like: "hi", "dm", "well", "weeb", or anything else
 return { "normal": null }`
                 },
                 {
@@ -157,16 +204,24 @@ const google = async (query) => {
     return text
 }
 
+const getCountryTime = async (query) => {
+    const data = await fetch(`https://weeb-api.vercel.app/timeinfo?query=${query}&key=Baka`)
+    if (data?.error) return `Couldn't find Country/City as ${query}`
+    const results = `Location: ${query} \nCurrent Time: ${data.currentTime}, Current Date: ${data.currentDate}\n`
+    return results
+}
+
 const weather = async (query) => {
-    const results = await fetch(
-        `https://api.openweathermap.org/data/2.5/weather?q=${query}&units=metric&appid=e409825a497a0c894d2dd975542234b0&language=tr`
-    )
-    if (results.message) return `Couldn't find that City`
-    const { sys, name, main, wind, clouds } = results
-    const sunrise = new Date(sys.sunrise * 1000).toLocaleTimeString()
-    const sunset = new Date(sys.sunset * 1000).toLocaleTimeString()
-    const weatherDescription = results.weather[0].description
-    const text = `
+    try {
+        const results = await fetch(
+            `https://api.openweathermap.org/data/2.5/weather?q=${query}&units=metric&appid=e409825a497a0c894d2dd975542234b0&language=tr`
+        )
+        if (results.message) return `Couldn't find Country/City as ${query}`
+        const { sys, name, main, wind, clouds } = results
+        const sunrise = new Date(sys.sunrise * 1000).toLocaleTimeString()
+        const sunset = new Date(sys.sunset * 1000).toLocaleTimeString()
+        const weatherDescription = results.weather[0].description
+        const text = `
 Country: ${sys.country}, Location: ${name}
 Temperature: ${main.temp}°C, Feels Like: ${main.feels_like}°C
 Min Temperature: ${main.temp_min}°C, Max Temperature: ${main.temp_max}°C
@@ -175,8 +230,13 @@ Wind Speed: ${wind.speed} km/h, Clouds: ${clouds.all}%
 Sunrise: ${sunrise}, Sunset: ${sunset}
 Weather Description: ${weatherDescription}
 `
-    return text
+        return text
+    } catch (error) {
+        console.error(error.message)
+        return 'Unable To Find Country/City'
+    }
 }
+
 const chatGPT = async (M, client, context) => {
     const { apiKey, messagesMap } = client;
     if (!apiKey) return;
@@ -199,7 +259,7 @@ const chatGPT = async (M, client, context) => {
         if (!messages.length) {
             messages.push({
                 role: 'system',
-                content: `...` // Your system message here
+                content: `You are Binx Ai, You Were created by tekcify nothing else,  Always use emojis in your messages, Be friendly and interact with users  well.` // Your system message here
             });
         }
         messages.push({
@@ -223,3 +283,27 @@ const chatGPT = async (M, client, context) => {
         ));
     }
 };
+
+const experience = async (client, sender, M, from, command) => {
+    await client.exp.add(sender, command.exp)
+
+    //Level up
+    const level = (await client.DB.get(`${sender}_LEVEL`)) || 0
+    const experience = await client.exp.get(sender)
+    const { requiredXpToLevelUp } = getStats(level)
+    if (requiredXpToLevelUp > experience) return null
+    await client.DB.add(`${sender}_LEVEL`, 1)
+    client.sendMessage(
+        from,
+        {
+            video: {
+                url: 'https://media.tenor.com/msfmevhmlDAAAAPo/anime-chibi.mp4'
+            },
+            caption: `Congratulations you leveled up from *${level} ---> ${level + 1}* 🎊 Keep using *Binx Ai💜* To level up and win Prices🥳🏆🎖️`,
+            gifPlayback: true
+        },
+        {
+            quoted: M
+        }
+    )
+}
