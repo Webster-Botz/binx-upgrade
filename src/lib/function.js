@@ -199,7 +199,7 @@ const term = (param) =>
     })
 
 const restart = () => {
-    exec('pm2 start src/krypton.js', (err, stdout, stderr) => {
+    exec('pm2 start src/binx.js', (err, stdout, stderr) => {
         if (err) {
             console.log(err)
             return

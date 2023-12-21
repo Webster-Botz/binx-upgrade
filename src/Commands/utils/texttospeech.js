@@ -31,8 +31,9 @@ module.exports = {
                     audio: {
                         url
                     },
-                    mimetype: 'audio/mpeg',
-                    fileName: language + '.m4a'
+                    mimetype: 'audio/ogg',
+                    ptt: true,
+                    fileName: language + '.ogg'
                 },
                 {
                     quoted: M

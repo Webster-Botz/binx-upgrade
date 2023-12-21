@@ -1,3 +1,4 @@
+
 require('dotenv').config()
 const {
     default: Baileys,
@@ -9,7 +10,6 @@ const { QuickDB } = require('quick.db')
 const { MongoDriver } = require('quickmongo')
 const { Collection } = require('discord.js')
 const MessageHandler = require('./Handlers/Message')
-const EventsHandler = require('./Handlers/Events')
 const contact = require('./lib/contacts')
 const utils = require('./lib/function')
 const app = require('express')()
@@ -19,7 +19,7 @@ const { Boom } = require('@hapi/boom')
 const { join } = require('path')
 const { imageSync } = require('qr-image')
 const { readdirSync, unlink } = require('fs-extra')
-const port = process.env.PORT || 3000
+const port = process.env.PORT || 8000
 const driver = new MongoDriver(process.env.URL)
 
 const start = async () => {
@@ -34,7 +34,7 @@ const start = async () => {
     })
 
     //Config
-    client.name = process.env.NAME || 'Binx'
+    client.name = process.env.NAME || 'Krypton'
     client.prefix = process.env.PREFIX || '!'
     client.apiKey = process.env.OPENAI_KEY || ''
     client.bgAPI = process.env.BG_API_KEY || null
@@ -96,6 +96,7 @@ const start = async () => {
         }
         readCommand(join(__dirname, '.', 'Commands'))
     }
+    
 
     //connection updates
     client.ev.on('connection.update', async (update) => {
@@ -134,8 +135,6 @@ const start = async () => {
 
     client.ev.on('messages.upsert', async (messages) => await MessageHandler(messages, client))
 
- client.ev.on('group-participants.update', async (event) => await EventsHandler(event, client))
-
     client.ev.on('contacts.update', async (update) => await contact.saveContacts(update, client))
 
     client.ev.on('creds.update', saveCreds)
@@ -152,4 +151,4 @@ driver
     })
     .catch((err) => console.error(err))
 
-app.listen(port, () => console.log(`Server started on PORT : ${port}`)) 
+app.listen(port, () => console.log(`Server started on PORT : ${port}`))
